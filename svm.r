@@ -1,5 +1,5 @@
 library(readxl)
-library(plotly)
+library(e1071)
 
 setwd("C:/Users/vitor/OneDrive/Área de Trabalho/Bases Contratos W/ARQ WIN/DATA")
 mar2022=read_excel("C:/Users/vitor/OneDrive/Área de Trabalho/Bases Contratos W/ARQ WIN/DATA/MAR2022.xlsx")
@@ -23,14 +23,84 @@ Data=Data[order(as.Date(Data$historico_data,format = "%d-%m-%Y %H:%M:%S"),decrea
 
 Data$Retorno=c(0,Data$historico_fechamento[2:length(historico_fechamento)]-Data$historico_fechamento[1:(length(historico_fechamento)-1)])
 
-plot(x=Data$historico_data,y=Data$historico_fechamento,type = 'l',)
+plot(Data$historico_fechamento,type = 'l')
 plot(Data$Retorno,type = 'l')
 
+#Calcula vetor de volatilidade do retorno por x candle de 2 min
+x=30 #volatilidade em 1 hr se x=30
+p=31
+i=0
+vetor_volatil=vector()
+while (p <= length(Data$historico_fechamento)){
+  i=i+1
+  vetor_volatil[i]=sqrt(var(Data$Retorno[(p-30):(p-1)]))
+  p=p+(30)
+}
+plot(vetor_volatil,type = 'l')
+vetor_volatil_final=vetor_volatil[vetor_volatil<200]
+vetor_volatil_final_index=which(vetor_volatil<200)
 
-fig = Data$ %>% plot_ly(x = ~historico_data, type="candlestick", open = ~historico_abertura, close = ~historico_fechamento,high = ~historico_maxima, low = ~historico_minima) 
-fig <- fig %>% add_lines(x = ~historico_data, y = ~historico_ma, name = "Mv Avg",
-                         line = list(color = '#E377C2', width = 1),
-                         hoverinfo = "none", inherit = F) 
-fig <- fig %>% layout(title = "Basic Candlestick Chart")
+plot(vetor_volatil_final)
 
-fig
+#Calcula distancia entre fechamento da janela anterior e o max e min na janela de x candles de 2 min (se dist for maior pro max selecionala max, se nao min)
+max_retorno_janela=vector()
+p=31
+c=0
+max_retorno_janela_index=vector()
+for (i in vetor_volatil_final_index){
+  c=c+1
+  c_index=vetor_volatil_final_index[i]
+  max_retorno_janela[c]=max(Data$historico_abertura[c_index]-min(Data$historico_minima[c_index:(c_index+(p-1)-1)]),
+                           max(Data$historico_maxima[c_index:(c_index+(p-1)-1)])-Data$historico_abertura[c_index])
+  max_retorno_janela_index[c]=c_index
+}
+plot(max_retorno_janela)
+vetor_mx_retorno_final_index=max_retorno_janela_index[max_retorno_janela>600]
+par(mfrow=c(5,2))
+for (i in 21:30){
+  c_index=vetor_mx_retorno_final_index[i]
+  plot(Data$historico_fechamento[(c_index+30):(c_index+1)],type='l')
+}
+
+#####################################################
+#Criando matriz de dados de treinamento
+N=30 #quantos periodos para traz vao ser usados para classificaçao
+vetor_mx_retorno_final_index=vetor_mx_retorno_final_index[vetor_mx_retorno_final_index>N]
+c=0
+vetor_mx_retorno_final_index_train=vetor_mx_retorno_final_index[1:(length(vetor_mx_retorno_final_index)-30)]
+vetor_mx_retorno_final_index_test=vetor_mx_retorno_final_index[(length(vetor_mx_retorno_final_index)-30+1):length(vetor_mx_retorno_final_index)]
+dataset_svm_train=matrix(NA,nrow=length(vetor_mx_retorno_final_index_train),ncol=N+1)
+for (i in 1:length(vetor_mx_retorno_final_index_train)){
+  c=c+1
+  c_index=vetor_mx_retorno_final_index_train[i]
+  dataset_svm_train[c,1:N]=Data$historico_fechamento[(c_index-N+1):c_index]
+  dataset_svm_train[c,(N+1)]=1
+}
+vetor_index_failgroup=seq(31,length(Data$historico_fechamento),1)
+vetor_index_failgroup=vetor_index_failgroup[-vetor_mx_retorno_final_index]
+vetor_index_failgroup=vetor_index_failgroup[-(vetor_mx_retorno_final_index+1)]
+c=0
+for (i in 1:length(vetor_index_failgroup)){
+  c=c+1
+  c_index=vetor_index_failgroup[i]
+  dataset_svm_train=rbind(dataset_svm_train,c(Data$historico_fechamento[(c_index-N+1):c_index],0))
+}
+
+#Separando dados para teste
+dataset_svm_train=as.data.frame(dataset_svm_train)
+dataset_svm_train=dataset_svm_train[-((nrow(dataset_svm_train)-21000):nrow(dataset_svm_train)),]
+dataset_svm_test=data.frame(dataset_svm_train[156:185,])
+dataset_svm_test=rbind(dataset_svm_test,dataset_svm_train[(nrow(dataset_svm_train)-29):(nrow(dataset_svm_train)),])
+dataset_svm_train=dataset_svm_train[-(156:185),]
+dataset_svm_train=dataset_svm_train[-((nrow(dataset_svm_train)-29):(nrow(dataset_svm_train))),]
+
+#################################################
+####################SVM##########################
+#################################################
+classifier = svm(formula =  V31~ .,
+                 data = dataset_svm_train,
+                 type = 'eps-regression',
+                 kernel = 'polynomial')
+pred=predict(classifier,newdata = dataset_svm_test)
+par(mfrow=c(1,1))
+plot(pred)
