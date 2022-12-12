@@ -1,6 +1,47 @@
 library(readxl)
 library(e1071)
+library(rpart)
 
+##################################################
+###############SIMULAÇÃO##########################
+##################################################
+
+dataset_svm_train=matrix(NA,ncol=31,nrow=1000)
+
+for (k in 1:nrow(dataset_svm_train)){
+  if(k<=200)dataset_svm_train[k,]=c(arima.sim(model = list(ar=0.1),n=30),1)
+  if(k>200)dataset_svm_train[k,]=c(arima.sim(model = list(ar=0.8),n=30),0)
+}
+
+#Separando dados para teste
+dataset_svm_train=as.data.frame(dataset_svm_train)
+dataset_svm_test=data.frame(dataset_svm_train[156:185,])
+dataset_svm_test=rbind(dataset_svm_test,dataset_svm_train[(nrow(dataset_svm_train)-29):(nrow(dataset_svm_train)),])
+dataset_svm_train=dataset_svm_train[-(156:185),]
+dataset_svm_train=dataset_svm_train[-((nrow(dataset_svm_train)-29):(nrow(dataset_svm_train))),]
+
+#################################################
+####################SVM##########################
+#################################################
+classifier = svm(formula =  V31~ .,
+                 data = dataset_svm_train,
+                 type = 'one-classification',
+                 kernel = 'radial')
+#summary(classifier)
+rpart.model = rpart(V31~ ., data = dataset_svm_train,method = "class")
+pred=predict(classifier,newdata = dataset_svm_test[,-31])
+summary(rpart.model)
+par(mfrow=c(1,1))
+plot(pred)
+plot(as.numeric(classifier$fitted),type='l')
+plot(classifier$decision.values)
+
+
+
+
+##################################################
+###############APLICAÇÃO##########################
+##################################################
 setwd("C:/Users/vitor/OneDrive/Área de Trabalho/Bases Contratos W/ARQ WIN/DATA")
 mar2022=read_excel("C:/Users/vitor/OneDrive/Área de Trabalho/Bases Contratos W/ARQ WIN/DATA/MAR2022.xlsx")
 fev2022=read_excel("C:/Users/vitor/OneDrive/Área de Trabalho/Bases Contratos W/ARQ WIN/DATA/FEB2022.xlsx")
@@ -59,7 +100,7 @@ vetor_mx_retorno_final_index=max_retorno_janela_index[max_retorno_janela>600]
 par(mfrow=c(5,2))
 for (i in 21:30){
   c_index=vetor_mx_retorno_final_index[i]
-  plot(Data$historico_fechamento[(c_index+30):(c_index+1)],type='l')
+  plot(Data$Retorno[(c_index+30):(c_index+1)],type='l')
 }
 
 #####################################################
@@ -73,22 +114,22 @@ dataset_svm_train=matrix(NA,nrow=length(vetor_mx_retorno_final_index_train),ncol
 for (i in 1:length(vetor_mx_retorno_final_index_train)){
   c=c+1
   c_index=vetor_mx_retorno_final_index_train[i]
-  dataset_svm_train[c,1:N]=Data$historico_fechamento[(c_index-N+1):c_index]
+  dataset_svm_train[c,1:N]=Data$Retorno[(c_index-N+1):c_index]
   dataset_svm_train[c,(N+1)]=1
 }
-vetor_index_failgroup=seq(31,length(Data$historico_fechamento),1)
+vetor_index_failgroup=seq(31,length(Data$Retorno),1)
 vetor_index_failgroup=vetor_index_failgroup[-vetor_mx_retorno_final_index]
 vetor_index_failgroup=vetor_index_failgroup[-(vetor_mx_retorno_final_index+1)]
 c=0
 for (i in 1:length(vetor_index_failgroup)){
   c=c+1
   c_index=vetor_index_failgroup[i]
-  dataset_svm_train=rbind(dataset_svm_train,c(Data$historico_fechamento[(c_index-N+1):c_index],0))
+  dataset_svm_train=rbind(dataset_svm_train,c(Data$Retorno[(c_index-N+1):c_index],0))
 }
 
 #Separando dados para teste
 dataset_svm_train=as.data.frame(dataset_svm_train)
-dataset_svm_train=dataset_svm_train[-((nrow(dataset_svm_train)-21000):nrow(dataset_svm_train)),]
+dataset_svm_train=dataset_svm_train[-((nrow(dataset_svm_train)-20800):nrow(dataset_svm_train)),]
 dataset_svm_test=data.frame(dataset_svm_train[156:185,])
 dataset_svm_test=rbind(dataset_svm_test,dataset_svm_train[(nrow(dataset_svm_train)-29):(nrow(dataset_svm_train)),])
 dataset_svm_train=dataset_svm_train[-(156:185),]
@@ -99,8 +140,14 @@ dataset_svm_train=dataset_svm_train[-((nrow(dataset_svm_train)-29):(nrow(dataset
 #################################################
 classifier = svm(formula =  V31~ .,
                  data = dataset_svm_train,
-                 type = 'eps-regression',
-                 kernel = 'polynomial')
-pred=predict(classifier,newdata = dataset_svm_test)
+                 type = 'C-classification',
+                 kernel = 'polynomial',degree=5)
+#summary(classifier)
+rpart.model = rpart(V31~ ., data = dataset_svm_train,method = "class")
+pred=predict(classifier,newdata = dataset_svm_test[,-31])
+summary(rpart.model)
 par(mfrow=c(1,1))
 plot(pred)
+plot(as.numeric(classifier$fitted),type='l')
+plot(classifier$decision.values)
+
